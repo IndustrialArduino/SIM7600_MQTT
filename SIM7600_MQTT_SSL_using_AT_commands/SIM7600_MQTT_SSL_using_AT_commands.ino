@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <WiFi.h>  // Include the WiFi library for MAC address
 #include <ArduinoJson.h>
+#include "Secret.h" // Include the file to get the username and pasasword of MQTT server
 
 String gsm_send_serial(String command, int delay);
 
@@ -144,23 +145,19 @@ void loop() {
    str_macAddress.toUpperCase();
    String Digital_input = "NORVI/INPUTS/" +  str_macAddress;
 
-   
-    // Publish the JSON object
-    //mqtt.publish(Digital_input.c_str(), jsonString.c_str());
     SerialMon.print("Published: ");
     SerialMon.println(jsonString);
    
+    // Send a periodic "ping" message to verify MQTT connection
+    String payload=(String)(millis()/1000L);
+    String response = gsm_send_serial("AT+CMQTTTOPIC=0," + String(Digital_input.length()), 1000);
+    response = gsm_send_serial(Digital_input, 1000);
+    response = gsm_send_serial("AT+CMQTTPAYLOAD=0," + String(jsonString.length()), 1000);
+    response = gsm_send_serial(jsonString + "\x1A", 1000);
+    response = gsm_send_serial("AT+CMQTTPUB=0,1,60", 1000);
 
-        // Send a periodic "ping" message to verify MQTT connection
-        String payload=(String)(millis()/1000L);
-        String response = gsm_send_serial("AT+CMQTTTOPIC=0," + String(Digital_input.length()), 1000);
-        response = gsm_send_serial(Digital_input, 1000);
-        response = gsm_send_serial("AT+CMQTTPAYLOAD=0," + String(jsonString.length()), 1000);
-        response = gsm_send_serial(jsonString + "\x1A", 1000);
-        response = gsm_send_serial("AT+CMQTTPUB=0,1,60", 1000);
-
-        // Check if the publish command was successful
-        if (response.indexOf("ERROR") != -1) {
+    // Check if the publish command was successful
+      if (response.indexOf("ERROR") != -1) {
             Serial.println("MQTT publish failed. Reconnecting...");
             connectToMQTT();
             if (!isGPRSConnected()) {
@@ -225,8 +222,6 @@ void handleIncomingMessages() {
     }
 }
 
-
-
 void Init(void) {
     delay(5000);
     gsm_send_serial("AT+CFUN=1", 10000);
@@ -261,17 +256,12 @@ void connectToMQTT(void) {
     gsm_send_serial("ping\x1A", 1000);
     gsm_send_serial("AT+CMQTTWILLMSG=0,6,1", 1000);
     gsm_send_serial("qwerty\x1A", 1000);
-    gsm_send_serial("AT+CMQTTCONNECT=0,\"tcp://mqtt2.sensoper.net:8883\",60,1,\"Administrator\",\"Sens1234Oper\"", 10000);
+    String command = "AT+CMQTTCONNECT=0,\"tcp://mqtt2.sensoper.net:8883\",60,1,\"" + username + "\",\"" + password + "\"";
+    gsm_send_serial(command, 10000);
     delay(2000);
-    //mqttcallback();
-   // mqttCallback(char* topic, byte* payload, unsigned int len);
     String downlinkTopic = "NORVI/+/OUTPUT";
-  
-    //gsm_send_serial("AT+CMQTTSUBTOPIC=0,14,1", 1000);
-    
     gsm_send_serial("AT+CMQTTSUB=0,14,1", 1000);
     gsm_send_serial(downlinkTopic + "\x1A", 1000);
-    
     delay(2000);
 }
 
