@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <WiFi.h>  // Include the WiFi library for MAC address
 #include <ArduinoJson.h>
+#include "Secret.h" // Include the file to get the username and pasasword of MQTT server
 String gsm_send_serial(String command, int delay);
 
 #define TINY_GSM_MODEM_SIM7600
@@ -13,9 +14,6 @@ String gsm_send_serial(String command, int delay);
 const char apn[] = "dialogbb";
 const char gprsUser[] = "";
 const char gprsPass[] = "";
-
-String username = "Administrator";
-String password = "Sens1234Oper";
 
 // MQTT details
 String broker = "mqtt.sensoper.net";
