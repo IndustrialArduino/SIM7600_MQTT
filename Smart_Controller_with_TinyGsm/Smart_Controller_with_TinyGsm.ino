@@ -12,36 +12,46 @@
 #define MODEM_RX 18
 #define GSM_RESET 34
 
+#define D0 36
+#define D1 35
+#define D2 32
+#define D3 33
+#define R0 4
+
 // Define the serial console for debug prints, if needed
-  #define TINY_GSM_DEBUG SerialMon
+#define TINY_GSM_DEBUG SerialMon
 
 // Range to attempt to autobaud
-// NOTE:  DO NOT AUTOBAUD in production code.  Once you've established
+// NOTE: DO NOT AUTOBAUD in production code. Once you've established
 // communication, set a fixed baud rate using modem.setBaud(#).
-  #define GSM_AUTOBAUD_MIN 9600
-  #define GSM_AUTOBAUD_MAX 115200
+#define GSM_AUTOBAUD_MIN 9600
+#define GSM_AUTOBAUD_MAX 115200
 
 // Define how you're planning to connect to the internet.
 // This is only needed for this example, not in other code.
-  #define TINY_GSM_USE_GPRS true
+#define TINY_GSM_USE_GPRS true
 
 // set GSM PIN, if any
-  #define GSM_PIN ""
+#define GSM_PIN ""
+
 
 // Your GPRS credentials, if any
-const char apn[]      = "dialogbb";
+const char apn[] = "dialogbb";
 const char gprsUser[] = "";
 const char gprsPass[] = "";
 
 // MQTT details
 const char* broker = "mqtt.sensoper.net";
 
-const char* topicLed       = "GsmClientTest/led";
-const char* topicInit      = "GsmClientTest/init";
-const char* topicLedStatus = "GsmClientTest/ledStatus";
+const char* topic = "Values";
+//const char* Digital_input = "";
+String str_macAddress;
 
 #include <TinyGsmClient.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <WiFi.h>  // Include the WiFi library for MAC address
+//#include <esp_wifi.h>  // Include the ESP WiFi library to get the MAC address
 
 // Just in case someone defined the wrong thing..
 #if TINY_GSM_USE_GPRS && not defined TINY_GSM_MODEM_HAS_GPRS
@@ -57,21 +67,30 @@ const char* topicLedStatus = "GsmClientTest/ledStatus";
 #define TINY_GSM_USE_WIFI false
 #endif
 
-#define PUBLISH_INTERVAL 5000  // Publish interval in milliseconds
+
+#define MAC_ADDRESS_SIZE 18 // Assuming MAC address is in format "XX:XX:XX:XX:XX:XX"
+byte mac[6]; 
+
+#define PUBLISH_INTERVAL 60000  // Publish interval in milliseconds (1 minute)
 
 unsigned long lastPublishTime = 0;
+unsigned long int mqtt_interval = 30000;
+
+// Device-specific details
+const char* deviceSerial = "34865D461830";  // Replace with your device serial
 
 #ifdef DUMP_AT_COMMANDS
 #include <StreamDebugger.h>
 StreamDebugger debugger(SerialAT, SerialMon);
-TinyGsm        modem(debugger);
+TinyGsm modem(debugger);
 #else
-TinyGsm        modem(SerialAT);
+TinyGsm modem(SerialAT);
 #endif
 TinyGsmClient client(modem);
-PubSubClient  mqtt(client);
+PubSubClient mqtt(client);
 
 uint32_t lastReconnectAttempt = 0;
+
 
 void mqttCallback(char* topic, byte* payload, unsigned int len) {
   SerialMon.print("Message arrived [");
@@ -80,8 +99,39 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
   SerialMon.write(payload, len);
   SerialMon.println();
 
-  mqtt.publish(topicLedStatus, "Hello");
+  // Extract serial number from the topic
+  String topicStr = String(topic);
+  int firstSlash = topicStr.indexOf('/');
+  int lastSlash = topicStr.lastIndexOf('/');
+  String MAC_ID = topicStr.substring(firstSlash + 1, lastSlash);
 
+  SerialMon.print("MAC ID: ");
+  SerialMon.println(MAC_ID);
+
+  if (MAC_ID == deviceSerial) {
+    // Decode the received message
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, payload, len);
+
+    if (error) {
+      SerialMon.print("deserializeJson() failed: ");
+      SerialMon.println(error.c_str());
+      return;
+    }
+
+    // Extract the payload
+     bool state = doc["state"];
+
+   if(state == 0){
+      digitalWrite(R0,LOW);
+   }else if(state == 1){
+     digitalWrite(R0,HIGH);
+   }
+     
+
+  } else {
+    SerialMon.println("Received message for a different serial number");
+  }
 }
 
 boolean mqttConnect() {
@@ -89,18 +139,15 @@ boolean mqttConnect() {
   SerialMon.print(broker);
 
   // Connect to MQTT Broker
-  //  boolean status = mqtt.connect("GsmClientTest");
-
-  // Or, if you want to authenticate MQTT:
-   boolean status = mqtt.connect("AB", "Administrator", "Sens1234Oper");
+  boolean status = mqtt.connect("GsmClientTest", "Administrator", "Sens1234Oper");
 
   if (status == false) {
     SerialMon.println(" fail");
     return false;
   }
   SerialMon.println(" success");
-  mqtt.publish(topicInit, "GsmClientTest started");
-  mqtt.subscribe(topicLed);
+  String downlinkTopic = "NORVI/+/OUTPUT";
+  mqtt.subscribe(downlinkTopic.c_str());  // Subscribe to the specific downlink topic
   return mqtt.connected();
 }
 
@@ -111,23 +158,27 @@ void setup() {
   SerialAT.begin(GSM_AUTOBAUD_MAX, SERIAL_8N1, MODEM_RX, MODEM_TX);
 
   delay(2000);
-    
+  
   pinMode(GSM_RESET, OUTPUT);
 
-  digitalWrite(GSM_RESET,HIGH );   // RS-485 
+  pinMode(D0, INPUT);
+  pinMode(D1, INPUT);
+  pinMode(D2, INPUT);
+  pinMode(D3, INPUT);
+  pinMode(R0, OUTPUT);
+  
+  digitalWrite(GSM_RESET, HIGH);   // RS-485 
 
   SerialMon.println("Wait...");
 
   // Set GSM module baud rate
   TinyGsmAutoBaud(SerialAT, GSM_AUTOBAUD_MIN, GSM_AUTOBAUD_MAX);
-  // SerialAT.begin(9600);
   delay(6000);
 
   // Restart takes quite some time
   // To skip it, call init() instead of restart()
   SerialMon.println("Initializing modem...");
   modem.restart();
-  // modem.init();
 
   String modemInfo = modem.getModemInfo();
   SerialMon.print("Modem Info: ");
@@ -136,11 +187,6 @@ void setup() {
 #if TINY_GSM_USE_GPRS
   // Unlock your SIM card with a PIN if needed
   if (GSM_PIN && modem.getSimStatus() != 3) { modem.simUnlock(GSM_PIN); }
-#endif
-
-#if TINY_GSM_USE_GPRS && defined TINY_GSM_MODEM_XBEE
-  // The XBee must run the gprsConnect function BEFORE waiting for network!
-  modem.gprsConnect(apn, gprsUser, gprsPass);
 #endif
 
   SerialMon.print("Waiting for network...");
@@ -154,7 +200,6 @@ void setup() {
   if (modem.isNetworkConnected()) { SerialMon.println("Network connected"); }
 
 #if TINY_GSM_USE_GPRS
-  // GPRS connection parameters are usually set after network registration
   SerialMon.print(F("Connecting to "));
   SerialMon.print(apn);
   if (!modem.gprsConnect(apn, gprsUser, gprsPass)) {
@@ -169,7 +214,12 @@ void setup() {
 
   // MQTT Broker setup
   mqtt.setServer(broker, 1881);
+  mqtt.setKeepAlive (mqtt_interval/1000);
+  mqtt.setSocketTimeout (mqtt_interval/1000);
   mqtt.setCallback(mqttCallback);
+  delay(1000);
+  String downlinkTopic = "NORVI/+/OUTPUT";
+  mqtt.subscribe(downlinkTopic.c_str());  // Subscribe to the specific downlink topic
 }
 
 void loop() {
@@ -215,19 +265,45 @@ void loop() {
 
   mqtt.loop();
 
-    // Check if it's time to publish a new value
-  unsigned long currentTime = millis();
-  if (currentTime - lastPublishTime >= PUBLISH_INTERVAL) {
-    lastPublishTime = currentTime;
+  unsigned long now = millis();
+  if (now - lastPublishTime > PUBLISH_INTERVAL) {
+    lastPublishTime = now;
 
-    // Publish a new value
-    static int value = 0;
-    char payload[50];
-    snprintf(payload, sizeof(payload), "Value: %d", value);
-    mqtt.publish(topicLed, payload);
+
+    bool IN1 = digitalRead(D0);
+    bool IN2 = digitalRead(D1);
+    bool IN3 = digitalRead(D2);
+    bool IN4 = digitalRead(D3);
+
+  
+
+    // Create JSON object
+    StaticJsonDocument<200> doc;
+    doc["D0"] = IN1 ? 1 : 0;
+    doc["D1"] = IN2 ? 1 : 0;
+    doc["D2"] = IN3 ? 1 : 0;
+    doc["D3"] = IN4 ? 1 : 0;
+
+    String jsonString;
+    //char jsonBuffer[512];
+    serializeJson(doc, jsonString);
+
+    WiFi.macAddress(mac);
+    
+    str_macAddress = (String(mac[0] >> 4,  HEX) + String(mac[0] & 0x0F, HEX)) +
+                     (String(mac[1] >> 4,  HEX) + String(mac[1] & 0x0F, HEX)) +
+                     (String(mac[2] >> 4,  HEX) + String(mac[2] & 0x0F, HEX)) +
+                     (String(mac[3] >> 4,  HEX) + String(mac[3] & 0x0F, HEX)) +
+                     (String(mac[4] >> 4,  HEX) + String(mac[4] & 0x0F, HEX)) +
+                     (String(mac[5] >> 4,  HEX) + String(mac[5] & 0x0F, HEX));
+   str_macAddress.toUpperCase();
+   String Digital_input = "NORVI/INPUTS/" +  str_macAddress;
+
+    
+
+    // Publish the JSON object
+    mqtt.publish(Digital_input.c_str(), jsonString.c_str());
     SerialMon.print("Published: ");
-    SerialMon.println(payload);
-
-    value++;  // Increment the value for the next publish
-  }
+    SerialMon.println(jsonString);
+ } 
 }
