@@ -1,3 +1,5 @@
+
+
 #define TINY_GSM_MODEM_SIM7600
 
 // Set serial for debug console (to the Serial Monitor, default speed 115200)
@@ -51,7 +53,7 @@ String str_macAddress;
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>  // Include the WiFi library for MAC address
-//#include <esp_wifi.h>  // Include the ESP WiFi library to get the MAC address
+#include "Secret.h" // Include the file to get the username and pasasword of MQTT server
 
 // Just in case someone defined the wrong thing..
 #if TINY_GSM_USE_GPRS && not defined TINY_GSM_MODEM_HAS_GPRS
@@ -139,7 +141,7 @@ boolean mqttConnect() {
   SerialMon.print(broker);
 
   // Connect to MQTT Broker
-  boolean status = mqtt.connect("GsmClientTest", "Administrator", "Sens1234Oper");
+  boolean status = mqtt.connect("GsmClientTest", username, password);
 
   if (status == false) {
     SerialMon.println(" fail");
