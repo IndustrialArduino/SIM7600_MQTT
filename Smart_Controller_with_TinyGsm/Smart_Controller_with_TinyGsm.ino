@@ -46,7 +46,6 @@ const char gprsPass[] = "";
 const char* broker = "mqtt.sensoper.net";
 
 const char* topic = "Values";
-//const char* Digital_input = "";
 String str_macAddress;
 
 #include <TinyGsmClient.h>
