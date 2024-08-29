@@ -168,7 +168,7 @@ void setup() {
   pinMode(D3, INPUT);
   pinMode(R0, OUTPUT);
   
-  digitalWrite(GSM_RESET, HIGH);   // RS-485 
+  digitalWrite(GSM_RESET, HIGH);   
 
   SerialMon.println("Wait...");
 
