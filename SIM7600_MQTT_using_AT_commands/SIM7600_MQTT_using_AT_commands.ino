@@ -93,7 +93,7 @@ void setup(){
 
     delay(2000);
     pinMode(GSM_RESET, OUTPUT);
-    digitalWrite(GSM_RESET,HIGH );   // RS-485 
+    digitalWrite(GSM_RESET,HIGH );   
     delay(2000);
     pinMode(D0, INPUT);
     pinMode(D1, INPUT);
